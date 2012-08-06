@@ -1,0 +1,12 @@
+<%@ include = header.tmpl %>
+<% foreach name $NameList { %>
+    <table border="1">
+        <th colspan="2"><%= $name %></th>
+    <% foreach {index value} [array get $name] { %>
+        <tr>
+            <td><%= $index %></td><td><%= $value %></td>
+        </tr>
+    <% } %>
+    </table>
+<% } %>
+<%@ include = footer.tmpl %>

@@ -1,0 +1,11 @@
+<%@ include = header.tmpl %>
+<table border="1">
+<% foreach index {Name Age} { %>
+    <tr>
+        <td><%= $index %></td>
+        <td><%= $myInfo($index) %></td>
+    </tr>
+<% } %>
+</table>
+
+<%@ include = footer.tmpl %>

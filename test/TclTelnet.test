@@ -1,0 +1,107 @@
+# -----------------------------------
+# Configuration
+# -----------------------------------
+
+package forget TclTelnet
+package require TclTelnet
+
+# -----------------------------------------------------------------------------
+# Verify related packages.
+# -----------------------------------------------------------------------------
+
+if {![package vsatisfies [package provide Tcl] 8.4]} {
+    puts "Requiring Tcl 8.4, have [package present Tcl]."
+    return
+}
+
+if {[lsearch [namespace children] ::tcltest] == -1} {
+    package require tcltest 2.2.5
+    namespace import ::tcltest::*
+}
+
+# -----------------------------------------------------------------------------
+# configure for tcltest
+# -----------------------------------------------------------------------------
+
+# fail break setting.
+set fail_break 1
+
+# print process.
+tcltest::configure -verbose {start pass skip error body}
+
+# -----------------------------------------------------------------------------
+# utility procedures
+# -----------------------------------------------------------------------------
+
+package require fileutil
+
+# -----------------------------------------------------------------------------
+# set up failbreak
+# -----------------------------------------------------------------------------
+
+# clean up test result and stop test if one test failed.
+proc failBreak {args} {
+    if {$tcltest::numTests(Failed) > 0} {
+        foreach index [array names tcltest::numTests] {
+            array set tcltest::numTests "$index 0"
+        }
+        error "Failed, Stop Test."
+    }
+}
+
+# clean all registers of the test procedure.
+foreach register [trace info execution test] {
+    eval "trace remove execution test $register"
+}
+
+# if fail_break == 1, register failBreak procedure when test procedure execute, execute failBreak before test procedure break.
+if {$fail_break} {trace add execution test leave failBreak}
+
+trace add execution test enter timerEnter
+trace add execution test leave timerLeave
+
+proc timerEnter {args} {
+    set ::timestamp [clock clicks -milliseconds]
+}
+proc timerLeave {args} {
+    puts "[expr [clock clicks -milliseconds] - $::timestamp] milliseconds per iteration\n"
+}
+
+# -----------------------------------------------------------------------------
+# start testing
+# -----------------------------------------------------------------------------
+
+test TclTelnet.test-1.1 {create object} -body {
+    # if {[regexp {new 註冊} $page]} {
+    # my sendLine "coevo"
+    # my sendLine "coevo53118909"
+    # }
+    # if {[regexp {您想刪除其他重複登入的連線嗎} $page]} {
+        # my sendLine "y"
+    # }
+    # if {[regexp {按任意鍵繼續} $page]} {
+        # my send " "
+    # }
+    return [TclTelnet::TclTelnet tmpl]
+} -cleanup {
+    tmpl destroy
+} -result {::tmpl}
+
+test TclTelnet.test-2.1 {} -setup {
+    TclTelnet::TclTelnet tmpl
+} -body {
+    set result ""
+    tmpl parse {<%if 1 {%>1<%} else {%>0<%}%>}
+    lappend result [tmpl render]
+    tmpl parse {<%if 0 {%>1<%} else {%>0<%}%>}
+    lappend result [tmpl render]
+    return $result
+} -cleanup {
+    tmpl destroy
+} -result {1 0}
+
+# -----------------------------------------------------------------------------
+# over testing
+# -----------------------------------------------------------------------------
+
+cleanupTests

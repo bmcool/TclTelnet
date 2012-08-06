@@ -1,0 +1,187 @@
+package require XOTcl;namespace import ::xotcl::*
+
+Class TclTelnet
+
+TclTelnet instproc init {} {
+    my _initScreen
+    my _initEscapeCodeRegexp
+}
+
+TclTelnet instproc destroy {} {
+    close [my set _channel]
+    
+    [self class] instdestroy [self]
+}
+
+TclTelnet instproc connect {host {port 23}} {
+    my set _channel [socket $host $port]
+    fconfigure [my set _channel] -blocking 0 -buffering none -translation binary
+    fileevent [my set _channel] readable [myproc _update [my set _channel]]
+}
+
+TclTelnet instproc send {message} {
+    puts -nonewline [my set _channel] $message
+}
+
+TclTelnet instproc sendLine {message} {
+    puts -nonewline [my set _channel] "$message\r"
+}
+
+TclTelnet instproc press {key} {
+    set key [string tolower $key]
+    
+    if {[regexp {ctrl_([a-z])} $key dummy char]} {
+        set index [string first $char abcdefghijklmnopqrstuvwxyz]
+        incr index
+        set hex [format %02x $index]
+        my send [subst \\x$hex]
+    } else {
+        switch -- $key {
+            up {my send "\x1b\x4f\x41"}
+            down {my send "\x1b\x4f\x42"}
+            right {my send "\x1b\x4f\x43"}
+            left {my send "\x1b\x4f\x44"}
+            home {my send "\x1b\x5b\x31\x7e"}
+            insert {my send "\x1b\x5b\x32\x7e"}
+            delete {my send "\x1b\x5b\x33\x7e"}
+            end {my send "\x1b\x5b\x34\x7e"}
+            pageup {my send "\x1b\x5b\x35\x7e"}
+            pagedown {my send "\x1b\x5b\x36\x7e"}
+            ctrl_p {my send "\x10"}
+            ctrl_r {my send "\x12"}
+            ctrl_x {my send "\x18"}
+            backspace -
+            back {my send "\x7f"}
+            default {
+                my send $key
+            }
+        }
+    }
+}
+
+TclTelnet instproc _initScreen {} {
+    my array unset _screen
+    
+    # bbs : width * height = 80 * 24
+    for {set y 1} {$y <= 24} {incr y} {
+        for {set x 1} {$x <= 80} {incr x} {
+            my array set _screen [list $x,$y " "]
+        }
+    }
+    
+    my set _x 1
+    my set _y 1
+}
+
+TclTelnet instproc _update {channel} {
+    if {![eof $channel]} {
+        set data [read $channel]
+        
+        set data [my _cleanColorCode $data]
+        set data [my _cleanUnusedCode $data]
+        
+        # for debug
+        # puts stderr [hexdump $data]
+        
+        while 1 {
+            set char [string index $data 0]
+            
+            if {$char == "\x1b"} {
+                if {[regexp ^[my set _cursorLocateEscapeCodeRegexp] $data dummy y x]} {
+                    if {[string is integer -strict $x] && [string is integer -strict $y]} {
+                        my set _x $x
+                        my set _y $y
+                    } else {
+                        my set _x 1
+                        my set _y 1
+                    }
+                    regsub [my set _cursorLocateEscapeCodeRegexp] $data "" data
+                } elseif {[regexp ^[my set _cursorControlEscapeCodeRegexp] $data dummy value control]} {
+                    switch -- $control {
+                        A {my incr _y -$value}
+                        B {my incr _y $value}
+                        C {my incr _x $value}
+                        D {my incr _x -$value}
+                    }
+                    regsub [my set _cursorControlEscapeCodeRegexp] $data "" data
+                } elseif {[regexp ^[my set _screenCleanEscapeCodeRegexp] $data]} {
+                    my _initScreen
+                    regsub [my set _screenCleanEscapeCodeRegexp] $data "" data
+                } elseif {[regexp ^[my set _EOLEscapeCodeRegexp] $data]} {
+                    for {set x [my set _x]} {$x <= 80} {incr x} {
+                        my array set _screen [list $x,[my set _y] " "]
+                    }
+                    regsub [my set _EOLEscapeCodeRegexp] $data "" data
+                } else {
+                    set data [string range $data 1 end]
+                }
+            } else {
+                if {$char == "\r"} {
+                    my set _x 1
+                } elseif {$char == "\n"} {
+                    my incr _y
+                } elseif {$char == "\b"} {
+                    my incr _x -1
+                } else {
+                    my array set _screen [list [my set _x],[my set _y] $char]
+                    my incr _x
+                }
+                set data [string range $data 1 end]
+            }
+            
+            if {$data == ""} {break}
+        }
+        
+        set page [my printScreen]
+    } else {
+        close $channel
+    }
+}
+
+TclTelnet instproc _initEscapeCodeRegexp {} {
+    my set _escapeCode "\x1b"
+    
+    my set _cursorLocateEscapeCodeRegexp [my set _escapeCode]
+    my append _cursorLocateEscapeCodeRegexp {\[(?:([0-9]+);([0-9]+))?[Hf]}
+    
+    my set _cursorControlEscapeCodeRegexp [my set _escapeCode]
+    my append _cursorControlEscapeCodeRegexp {\[([0-9]+)([ABCD])}
+    
+    my set _screenCleanEscapeCodeRegexp [my set _escapeCode]
+    my append _screenCleanEscapeCodeRegexp {\[2J}
+    
+    my set _EOLEscapeCodeRegexp [my set _escapeCode]
+    my append _EOLEscapeCodeRegexp {\[K}
+}
+
+TclTelnet instproc _cleanColorCode {data} {
+    append re [my set _escapeCode] {\[[0-9;]*m}
+    regsub -all $re $data "" result
+    return $result
+}
+
+TclTelnet instproc _cleanUnusedCode {data} {
+    append re [my set _escapeCode] {\[[su]}
+    regsub -all $re $data "" result
+    return $result
+}
+
+TclTelnet instproc printScreen {} {
+    set result ""
+    for {set y 1} {$y <= 24} {incr y} {
+        for {set x 1} {$x <= 80} {incr x} {
+            foreach {dummy char} [my array get _screen $x,$y] {break}
+            append result $char
+        }
+        append result \n
+    }
+    # set result [string map {"¡´" "¢I"} $result]
+    # set result [string map {"¡÷" "->"} $result]
+    # set result [string map {"¡ö" "<-"} $result]
+    # set result [string map {"¢F" " "} $result]
+    # set result [string map {"¡L" " "} $result]
+    
+    set result [encoding convertfrom cp950 $result]
+    puts -nonewline $result
+    return $result
+}
