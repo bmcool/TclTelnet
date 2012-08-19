@@ -1,19 +1,27 @@
 package require XOTcl;namespace import ::xotcl::*
 
-Class TclTelnet
+Class TclTelnet -slots {
+    Attribute Host
+    Attribute Port -default 23 -type integer
+    Attribute Print -default 0 -type boolean
+}
 
 TclTelnet instproc init {} {
+    my set _eventID ""
+    
     my _initScreen
     my _initEscapeCodeRegexp
 }
 
 TclTelnet instproc destroy {} {
-    close [my set _channel]
+    catch {close [my set _channel]}
     
     [self class] instdestroy [self]
 }
 
 TclTelnet instproc connect {host {port 23}} {
+    my Host $host
+    my Port $port
     my set _channel [socket $host $port]
     fconfigure [my set _channel] -blocking 0 -buffering none -translation binary
     fileevent [my set _channel] readable [myproc _update [my set _channel]]
@@ -73,9 +81,41 @@ TclTelnet instproc _initScreen {} {
     my set _y 1
 }
 
+TclTelnet instproc update {{timeout 5000}} {
+    my set _waiting 0
+    after cancel [my set _eventID]
+    my set _eventID [after $timeout [list [self] set _waiting 0]]
+    my vwait _waiting
+}
+
+TclTelnet instproc waitUntilChange {{timeout 5000}} {
+    set t1 [clock clicks -milliseconds]
+    while 1 {
+        set s1 [my printScreen]
+        my update
+        set s2 [my printScreen]
+        if {$s1 != $s2} {return}
+        
+        set t2 [clock clicks -milliseconds]
+        if {[expr $t2 - $t1] > $timeout} {return}
+    }
+}
+
+TclTelnet instproc waitForExpectContent {re {timeout 5000}} {
+    set t1 [clock clicks -milliseconds]
+    while 1 {
+        if {[regexp $re [my printScreen]]} {return}
+        my update
+        
+        set t2 [clock clicks -milliseconds]
+        if {[expr $t2 - $t1] > $timeout} {return}
+    }
+}
+
 TclTelnet instproc _update {channel} {
     if {![eof $channel]} {
         set data [read $channel]
+        if {[string trim $data] == ""} {return}
         
         set data [my _cleanColorCode $data]
         set data [my _cleanUnusedCode $data]
@@ -136,6 +176,7 @@ TclTelnet instproc _update {channel} {
     } else {
         close $channel
     }
+    my set _waiting 0
 }
 
 TclTelnet instproc _initEscapeCodeRegexp {} {
@@ -175,6 +216,7 @@ TclTelnet instproc printScreen {} {
         }
         append result \n
     }
+    set result [string trimright $result \n]
     # set result [string map {"¡´" "¢I"} $result]
     # set result [string map {"¡÷" "->"} $result]
     # set result [string map {"¡ö" "<-"} $result]
@@ -182,6 +224,8 @@ TclTelnet instproc printScreen {} {
     # set result [string map {"¡L" " "} $result]
     
     set result [encoding convertfrom cp950 $result]
-    puts -nonewline $result
+    if {[my Print]} {
+        puts -nonewline $result
+    }
     return $result
 }
