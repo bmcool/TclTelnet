@@ -207,6 +207,22 @@ TclTelnet instproc _cleanUnusedCode {data} {
     return $result
 }
 
+TclTelnet instproc getLine {number} {
+    set result ""
+    for {set x 1} {$x <= 80} {incr x} {
+        foreach {dummy char} [my array get _screen $x,$number] {break}
+        append result $char
+    }
+    append result \n
+    set result [string trimright $result \n]
+    
+    set result [encoding convertfrom cp950 $result]
+    if {[my Print]} {
+        puts -nonewline $result
+    }
+    return $result
+}
+
 TclTelnet instproc printScreen {} {
     set result ""
     for {set y 1} {$y <= 24} {incr y} {
