@@ -1,1 +1,1 @@
-package ifneeded TclTelnet 0.0.2 [list source [file join $dir main.tcl]]
+package ifneeded TclTelnet 0.0.3 [list source [file join $dir main.tcl]]

@@ -8,7 +8,7 @@ Class TclTelnet -slots {
 
 TclTelnet instproc init {} {
     my set _eventID ""
-    
+    my set _connected 0
     my _initScreen
     my _initEscapeCodeRegexp
 }
@@ -23,8 +23,18 @@ TclTelnet instproc connect {host {port 23}} {
     my Host $host
     my Port $port
     my set _channel [socket $host $port]
+    my set _connected 1
     fconfigure [my set _channel] -blocking 0 -buffering none -translation binary
     fileevent [my set _channel] readable [myproc _update [my set _channel]]
+}
+
+TclTelnet instproc disconnect {} {
+    catch {close [my set _channel]}
+    my set _connected 0
+}
+
+TclTelnet instproc isConnected {} {
+    return [my set _connected]
 }
 
 TclTelnet instproc send {message} {
@@ -55,13 +65,10 @@ TclTelnet instproc press {key} {
             end {my send "\x1b\x5b\x34\x7e"}
             pageup {my send "\x1b\x5b\x35\x7e"}
             pagedown {my send "\x1b\x5b\x36\x7e"}
-            ctrl_p {my send "\x10"}
-            ctrl_r {my send "\x12"}
-            ctrl_x {my send "\x18"}
             backspace -
             back {my send "\x7f"}
             default {
-                my send $key
+                error "[self] press : bad key '$key'"
             }
         }
     }
@@ -81,7 +88,7 @@ TclTelnet instproc _initScreen {} {
     my set _y 1
 }
 
-TclTelnet instproc update {{timeout 5000}} {
+TclTelnet instproc update {{timeout 1000}} {
     my set _waiting 0
     after cancel [my set _eventID]
     my set _eventID [after $timeout [list [self] set _waiting 0]]
@@ -91,20 +98,26 @@ TclTelnet instproc update {{timeout 5000}} {
 TclTelnet instproc waitUntilChange {{timeout 5000}} {
     set t1 [clock clicks -milliseconds]
     while 1 {
-        set s1 [my printScreen]
+        set s1 [my array get _screen]
         my update
-        set s2 [my printScreen]
+        set s2 [my array get _screen]
         if {$s1 != $s2} {return}
-        
+        # puts "[self] waitUntilChange : not changed, content = \n$content\nkeeping waiting...."
         set t2 [clock clicks -milliseconds]
         if {[expr $t2 - $t1] > $timeout} {return}
     }
 }
 
-TclTelnet instproc waitForExpectContent {re {timeout 5000}} {
+TclTelnet instproc waitForExpectContent {re {line ""} {timeout 5000}} {
     set t1 [clock clicks -milliseconds]
     while 1 {
-        if {[regexp $re [my printScreen]]} {return}
+        if {$line == ""} {
+            set content [my printScreen]
+        } else {
+            set content [my getLine $line]
+        }
+        if {[regexp $re $content]} {return}
+        # puts "[self] waitForExpectContent : not match, keep waiting....\nre = $re, content = \n$content"
         my update
         
         set t2 [clock clicks -milliseconds]
@@ -120,7 +133,7 @@ TclTelnet instproc _update {channel} {
         set data [my _cleanColorCode $data]
         set data [my _cleanUnusedCode $data]
         
-        # for debug
+        # for hex debug
         # puts stderr [hexdump $data]
         
         while 1 {
@@ -171,10 +184,9 @@ TclTelnet instproc _update {channel} {
             
             if {$data == ""} {break}
         }
-        
-        set page [my printScreen]
     } else {
         close $channel
+        my set _connected 0
     }
     my set _waiting 0
 }
@@ -213,33 +225,35 @@ TclTelnet instproc getLine {number} {
         foreach {dummy char} [my array get _screen $x,$number] {break}
         append result $char
     }
-    append result \n
-    set result [string trimright $result \n]
     
     set result [encoding convertfrom cp950 $result]
-    if {[my Print]} {
-        puts -nonewline $result
-    }
     return $result
+}
+
+TclTelnet instproc getCurrentLine {} {
+    set result ""
+    for {set x 1} {$x <= 80} {incr x} {
+        foreach {dummy char} [my array get _screen $x,[my getCurrentLineNumber]] {break}
+        append result $char
+    }
+    
+    set result [encoding convertfrom cp950 $result]
+    return $result
+}
+
+TclTelnet instproc getCurrentLineNumber {} {
+    return [my set _y]
 }
 
 TclTelnet instproc printScreen {} {
     set result ""
     for {set y 1} {$y <= 24} {incr y} {
-        for {set x 1} {$x <= 80} {incr x} {
-            foreach {dummy char} [my array get _screen $x,$y] {break}
-            append result $char
-        }
+        append result [my getLine $y]
         append result \n
     }
-    set result [string trimright $result \n]
-    # set result [string map {"¡´" "¢I"} $result]
-    # set result [string map {"¡÷" "->"} $result]
-    # set result [string map {"¡ö" "<-"} $result]
-    # set result [string map {"¢F" " "} $result]
-    # set result [string map {"¡L" " "} $result]
     
-    set result [encoding convertfrom cp950 $result]
+    set result [string trimright $result \n]
+    
     if {[my Print]} {
         puts -nonewline $result
     }
