@@ -35,10 +35,10 @@ proc login {username password} {
     ptt_client update
     
     while 1 {
-        if {[regexp {¨t²Î¹L¸ü, ½Ğµy«á¦A¨Ó} [ptt_client printScreen]]} {
+        if {[regexp {ç³»çµ±éè¼‰, è«‹ç¨å¾Œå†ä¾†} [ptt_client printScreen]]} {
             puts "The system is in high load, retry...."
             ptt_client destroy
-            ::TclTelnet::TclTelnet ptt_client
+            ptt_client disconnect
             ptt_client connect ptt.cc
             ptt_client update
         } else {
@@ -48,19 +48,32 @@ proc login {username password} {
     
     ptt_client sendLine $username
     ptt_client sendLine $password
-    puts "Log-in"
+    
+    time {ptt_client update 100} 5
+    
+    if {[regexp {å¯†ç¢¼ä¸å°æˆ–ç„¡æ­¤å¸³è™Ÿ} [ptt_client printScreen]]} {
+        ptt_client destroy
+        error "wrong password or username"
+    } else {
+        puts "Log-in"
+    }
 }
 
 proc goHomePage {} {
     puts "Try to go to home page"
     while 1 {
-        if {[regexp {¥D¥\¯àªí} [ptt_client getLine 1]]} {
+        if {[regexp {ä¸»åŠŸèƒ½è¡¨} [ptt_client getLine 1]]} {
             puts "At home page now"
             break
-        } elseif {[regexp {±z·Q§R°£¨ä¥L­«½Æµn¤Jªº³s½u¶Ü¡H} [ptt_client printScreen]]} {
+        } elseif {[regexp {æ‚¨æƒ³åˆªé™¤å…¶ä»–é‡è¤‡ç™»å…¥çš„é€£ç·šå—} [ptt_client printScreen]]} {
             puts "Disconnect other connection"
             ptt_client sendLine y
+        } elseif {[regexp {æ‚¨è¦åˆªé™¤ä»¥ä¸ŠéŒ¯èª¤å˜—è©¦çš„è¨˜éŒ„å—} [ptt_client printScreen]]} {
+            puts "Detect wrong login"
+            ptt_client sendLine n
         }
+        
+        
         ptt_client send q
         ptt_client update
     }
@@ -70,7 +83,7 @@ proc goBoard {board} {
     ptt_client send s
     ptt_client sendLine $board
     ptt_client update
-    if {[regexp {½Ğ«ö¥ô·NÁäÄ~Äò} [ptt_client getLine 24]]} {
+    if {[regexp {è«‹æŒ‰ä»»æ„éµç¹¼çºŒ} [ptt_client getLine 24]]} {
         ptt_client send q
         ptt_client update
     }
@@ -91,7 +104,7 @@ proc goBottomAndGetTotalArticleCount {} {
     
     for {set row 23} {$row >= 1} {incr row -1} {
         set line [ptt_client getLine $row]
-        set line [string trimleft $line ¡´]
+        set line [string trimleft $line â—]
         set line [string trimleft $line]
         if {[regexp {^\d+} $line result]} {return $result}
     }
@@ -110,9 +123,9 @@ proc getCurrentArticleContent {} {
     puts "Get current article content.."
     ptt_client press right
     
-    ptt_client waitForExpectContent {ÂsÄı ²Ä.*?­¶ \(.*?(\d+)%\)} 24
+    ptt_client waitForExpectContent {ç€è¦½ ç¬¬.*?é  \(.*?(\d+)%\)} 24
     set infoRow [ptt_client getLine 24]
-    regexp {ÂsÄı ²Ä.*?­¶ \(.*?(\d+)%\)} $infoRow dummy pagePercent
+    regexp {ç€è¦½ ç¬¬.*?é  \(.*?(\d+)%\)} $infoRow dummy pagePercent
     set totalLines [lreplace [split [ptt_client printScreen] \n] end end]
     
     set count 1
@@ -122,7 +135,7 @@ proc getCurrentArticleContent {} {
         set line [ptt_client getLine 23]
         lappend totalLines $line
         set infoRow [ptt_client getLine 24]
-        regexp {ÂsÄı ²Ä.*?­¶ \(.*?(\d+)%\)} $infoRow dummy pagePercent
+        regexp {ç€è¦½ ç¬¬.*?é  \(.*?(\d+)%\)} $infoRow dummy pagePercent
         if {[expr $count % 5] == 0} {puts -nonewline .}
         if {[expr $count % 100] == 0} {puts "${pagePercent}%"}
         incr count
@@ -131,24 +144,27 @@ proc getCurrentArticleContent {} {
     
     # leave article
     ptt_client press left
-    ptt_client waitForExpectContent "¤å³¹¿ïÅª" 24
+    ptt_client waitForExpectContent "æ–‡ç« é¸è®€" 24
     
     return [string trim [join $totalLines \n]]
 }
 
-proc getAuthorAndNickname {content_list} {
-    regexp {§@ªÌ  (\w+) \((.*)\)} [lindex $content_list 0] dummy author_id nickname
-    return [list $author_id $nickname]
+proc getAuthorNickname {content_list} {
+    set nickname ""
+    regexp {ä½œè€…  \w+ \((.*)\)} [lindex $content_list 0] dummy nickname
+    return $nickname
 }
 
 proc getArticleTitle {content_list} {
-    regexp {¼ĞÃD  (.+)$} [lindex $content_list 1] dummy title
+    set title ""
+    regexp {æ¨™é¡Œ  (.+)$} [lindex $content_list 1] dummy title
     set title [string trim $title]
     return $title
 }
 
 proc getArticleCreateTime {content_list} {
-    regexp {®É¶¡  (.+)$} [lindex $content_list 2] dummy create_time
+    set create_time ""
+    regexp {æ™‚é–“  (.+)$} [lindex $content_list 2] dummy create_time
     set create_time [string trim $create_time]
     if {[regexp {\(.+\)} $create_time]} {
         regexp {\((.+)\)} $create_time dummy create_time
