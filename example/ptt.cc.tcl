@@ -48,7 +48,7 @@ for {set i 1} {$i <= 10} {incr i} {
         set article_title [getArticleTitle $article_content_list]
         set article_create_time [getArticleCreateTime $article_content_list]
         
-        if {$nickname == "" || $article_title == "" || $article_create_time == ""} {
+        if {$author_nickname == "" || $article_title == "" || $article_create_time == ""} {
             puts "Parse article error, maybe author delete all content"
         } else {
             puts "Article number = $article_number"
