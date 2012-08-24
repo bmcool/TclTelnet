@@ -32,9 +32,10 @@ puts "$board popularity = $popularity"
 for {set i 1} {$i <= 10} {incr i} {
     puts "-------------------------"
     set currentLine [ptt_client getCurrentLine]
-    regexp {●(.*?) (.)(.{1,2})../.. (\w+) } $currentLine dummy article_number article_status article_popularity author_id
-    if {[regexp {本文已被刪除} $currentLine]} {
+    regexp {●(.*?) (.)(.{1,2})../.. (.+?) } $currentLine dummy article_number article_status article_popularity author_id
+    if {$author_id == "-"} {
         puts "Article number $article_number has been deleted"
+        incr i -1
     } else {
         set article_popularity [string trim $article_popularity]
         if {$article_popularity == ""} {set article_popularity 0}

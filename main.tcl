@@ -1,4 +1,4 @@
-package provide TclTelnet 0.0.3
+package provide TclTelnet 0.0.4
 package require XOTcl;namespace import ::xotcl::*
 
 namespace eval ::TclTelnet {

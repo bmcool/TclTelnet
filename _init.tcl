@@ -1,3 +1,3 @@
 namespace eval ::TclTelnet {
-    variable version 0.0.3
+    variable version 0.0.4
 }
